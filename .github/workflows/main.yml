@@ -20,7 +20,7 @@ jobs:
       - name: Installer Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
+          gradle-version: '8.11.1'
 
       - name: Trouver et extraire le projet Android
         shell: bash
@@ -44,9 +44,14 @@ jobs:
             exit 1
           fi
 
+          echo "Mise à jour Android Gradle Plugin vers 8.9.1"
+          find "$PROJECT_DIR" -type f \( -name "*.gradle" -o -name "*.gradle.kts" \) -print0 | while IFS= read -r -d '' f; do
+            sed -i 's/8\.7\.3/8.9.1/g' "$f"
+          done
+
           cd "$PROJECT_DIR"
 
-          gradle wrapper --gradle-version 8.9
+          gradle wrapper --gradle-version 8.11.1
 
           chmod +x gradlew
 
