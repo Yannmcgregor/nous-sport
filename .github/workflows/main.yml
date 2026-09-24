@@ -18,8 +18,10 @@ jobs:
           java-version: '17'
 
       - name: Trouver et extraire le projet Android
+        shell: bash
         run: |
           ZIP=$(find . -type f -name "*.zip" | head -n 1)
+
           if [ -z "$ZIP" ]; then
             echo "Aucun fichier ZIP trouve"
             exit 1
@@ -29,24 +31,25 @@ jobs:
           mkdir -p android
           unzip -q "$ZIP" -d android
 
-      - name: Trouver Gradle
-        run: |
-          GRADLEW=$(find android -type f -name "gradlew" -print -quit)
+          GRADLEW=$(find android -type f -name "gradlew" | head -n 1)
 
           if [ -z "$GRADLEW" ]; then
-            echo "gradlew introuvable dans le projet Android"
+            echo "gradlew introuvable dans le ZIP"
             find android -maxdepth 4 -type f | head -n 100
             exit 1
           fi
 
           ANDROID_DIR=$(dirname "$GRADLEW")
-
           echo "ANDROID_DIR=$ANDROID_DIR" >> "$GITHUB_ENV"
-          echo "GRADLEW=$GRADLEW" >> "$GITHUB_ENV"
+          echo "Projet Android trouve dans: $ANDROID_DIR"
 
-          chmod +x "$GRADLEW"
+      - name: Donner les permissions Gradle
+        shell: bash
+        run: |
+          chmod +x "$ANDROID_DIR/gradlew"
 
       - name: Construire APK
+        shell: bash
         run: |
           cd "$ANDROID_DIR"
           ./gradlew assembleDebug
@@ -55,4 +58,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: nous-sport-debug
-          path: android/**/build/outputs/apk/debug/*.apk
+          path: ${{ env.ANDROID_DIR }}/app/build/outputs/apk/debug/app-debug.apk
