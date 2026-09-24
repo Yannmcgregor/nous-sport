@@ -20,7 +20,7 @@ jobs:
       - name: Installer Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.7'
+          gradle-version: '8.9'
 
       - name: Trouver et extraire le projet Android
         shell: bash
@@ -36,33 +36,21 @@ jobs:
           mkdir -p android
           unzip -q "$ZIP" -d android
 
-          echo "Contenu extrait :"
-          find android -maxdepth 4 -type f | head -n 100
+          GRADLEW=$(find android -type f -name "gradlew" | head -n 1)
 
-      - name: Trouver le dossier Gradle Android
-        shell: bash
-        run: |
-          GRADLEW=$(find android -type f -name gradlew | head -n 1 || true)
-
-          if [ -n "$GRADLEW" ]; then
-            chmod +x "$GRADLEW"
-            echo "GRADLEW=$GRADLEW" >> "$GITHUB_ENV"
-            echo "gradlew trouve : $GRADLEW"
-          else
-            PROJECT_DIR=$(find android -type f -name settings.gradle -o -name settings.gradle.kts | head -n 1 | xargs -r dirname)
-
-            if [ -z "$PROJECT_DIR" ]; then
-              echo "Projet Gradle Android introuvable"
-              find android -maxdepth 5 -type f
-              exit 1
-            fi
-
-            echo "Projet Gradle trouve : $PROJECT_DIR"
-            cd "$PROJECT_DIR"
-            gradle wrapper --gradle-version 8.7
-            chmod +x gradlew
-            echo "GRADLEW=$PROJECT_DIR/gradlew" >> "$GITHUB_ENV"
+          if [ -z "$GRADLEW" ]; then
+            echo "gradlew introuvable"
+            find android -maxdepth 5 -type f | head -n 100
+            exit 1
           fi
+
+          PROJECT_DIR=$(dirname "$GRADLEW")
+          cd "$PROJECT_DIR"
+
+          gradle wrapper --gradle-version 8.9
+          chmod +x gradlew
+
+          echo "GRADLEW=$PROJECT_DIR/gradlew" >> "$GITHUB_ENV"
 
       - name: Construire APK
         shell: bash
