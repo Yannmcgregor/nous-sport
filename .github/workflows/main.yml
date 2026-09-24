@@ -28,43 +28,69 @@ jobs:
           ZIP=$(find . -type f -name "*.zip" | head -n 1)
 
           if [ -z "$ZIP" ]; then
-            echo "Aucun fichier ZIP trouvé"
+            echo "Aucun fichier ZIP trouve"
             exit 1
           fi
+
+          echo "ZIP trouve : $ZIP"
 
           rm -rf android
           mkdir -p android
           unzip -q "$ZIP" -d android
 
-          PROJECT_DIR="android/android"
+          PROJECT_DIR=$(find android -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) -print -quit | xargs -r dirname)
 
-          if [ ! -f "$PROJECT_DIR/settings.gradle" ] && [ ! -f "$PROJECT_DIR/settings.gradle.kts" ]; then
-            echo "Projet Gradle Android introuvable"
-            find android -maxdepth 4 -type f | head -100
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "Projet Android introuvable dans le ZIP"
+            find android -maxdepth 4 -type f | head -n 100
             exit 1
           fi
 
-          echo "Mise à jour Android Gradle Plugin vers 8.9.1"
-          find "$PROJECT_DIR" -type f \( -name "*.gradle" -o -name "*.gradle.kts" \) -print0 | while IFS= read -r -d '' f; do
+          echo "Projet Android : $PROJECT_DIR"
+
+          echo "Mise a jour Android Gradle Plugin vers 8.9.1"
+
+          while IFS= read -r f; do
             sed -i 's/8\.7\.3/8.9.1/g' "$f"
+          done < <(find "$PROJECT_DIR" -type f \( -name "*.gradle" -o -name "*.gradle.kts" \))
+
+          echo "Correction Health Connect"
+
+          rm -f "$PROJECT_DIR/app/src/main/res/xml/health_permissions.xml"
+
+          MANIFEST="$PROJECT_DIR/app/src/main/AndroidManifest.xml"
+
+          if [ ! -f "$MANIFEST" ]; then
+            echo "AndroidManifest.xml introuvable : $MANIFEST"
+            exit 1
+          fi
+
+          for P in \
+            android.permission.health.READ_STEPS \
+            android.permission.health.READ_DISTANCE \
+            android.permission.health.READ_HEART_RATE \
+            android.permission.health.READ_ACTIVE_CALORIES_BURNED \
+            android.permission.health.READ_TOTAL_CALORIES_BURNED
+          do
+            grep -q "$P" "$MANIFEST" || sed -i "s#<application#<uses-permission android:name=\"$P\" />\n    <application#" "$MANIFEST"
           done
 
           cd "$PROJECT_DIR"
 
           gradle wrapper --gradle-version 8.11.1
-
           chmod +x gradlew
 
           echo "GRADLEW=$PROJECT_DIR/gradlew" >> "$GITHUB_ENV"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
       - name: Construire APK
         shell: bash
         run: |
-          cd "$(dirname "$GRADLEW")"
+          cd "$PROJECT_DIR"
           ./gradlew assembleDebug --no-daemon
 
       - name: Recuperer APK
         uses: actions/upload-artifact@v4
         with:
           name: nous-sport-debug-apk
-          path: android/android/app/build/outputs/apk/debug/*.apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
