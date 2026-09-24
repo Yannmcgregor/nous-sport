@@ -28,7 +28,7 @@ jobs:
           ZIP=$(find . -type f -name "*.zip" | head -n 1)
 
           if [ -z "$ZIP" ]; then
-            echo "Aucun fichier ZIP trouve"
+            echo "Aucun fichier ZIP trouvé"
             exit 1
           fi
 
@@ -36,18 +36,18 @@ jobs:
           mkdir -p android
           unzip -q "$ZIP" -d android
 
-          GRADLEW=$(find android -type f -name "gradlew" | head -n 1)
+          PROJECT_DIR="android/android"
 
-          if [ -z "$GRADLEW" ]; then
-            echo "gradlew introuvable"
-            find android -maxdepth 5 -type f | head -n 100
+          if [ ! -f "$PROJECT_DIR/settings.gradle" ] && [ ! -f "$PROJECT_DIR/settings.gradle.kts" ]; then
+            echo "Projet Gradle Android introuvable"
+            find android -maxdepth 4 -type f | head -100
             exit 1
           fi
 
-          PROJECT_DIR=$(dirname "$GRADLEW")
           cd "$PROJECT_DIR"
 
           gradle wrapper --gradle-version 8.9
+
           chmod +x gradlew
 
           echo "GRADLEW=$PROJECT_DIR/gradlew" >> "$GITHUB_ENV"
@@ -61,5 +61,5 @@ jobs:
       - name: Recuperer APK
         uses: actions/upload-artifact@v4
         with:
-          name: nous-sport-debug
-          path: "**/build/outputs/apk/debug/*.apk"
+          name: nous-sport-debug-apk
+          path: android/android/app/build/outputs/apk/debug/*.apk
