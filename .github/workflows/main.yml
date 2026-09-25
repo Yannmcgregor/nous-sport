@@ -54,21 +54,21 @@ jobs:
             sed -i 's/8\.7\.3/8.9.1/g' "$f"
           done < <(find "$PROJECT_DIR" -type f \( -name "*.gradle" -o -name "*.gradle.kts" \))
 
-          echo "Correction Java/Kotlin en JVM 17"
+          echo "Alignement Java/Kotlin sur JVM 1.8 (Java 17 reste le JDK de build)"
 
           # Corrige les anciennes cibles Java 8/Kotlin 1.8 dans les fichiers Gradle.
           while IFS= read -r f; do
             sed -i \
-              -e 's/JavaVersion\.VERSION_1_8/JavaVersion.VERSION_17/g' \
-              -e 's/JavaVersion\.VERSION_8/JavaVersion.VERSION_17/g' \
-              -e 's/sourceCompatibility[[:space:]]*=[[:space:]]*["'"'"']1\.8["'"'"']/sourceCompatibility = JavaVersion.VERSION_17/g' \
-              -e 's/targetCompatibility[[:space:]]*=[[:space:]]*["'"'"']1\.8["'"'"']/targetCompatibility = JavaVersion.VERSION_17/g' \
-              -e 's/sourceCompatibility[[:space:]]*=[[:space:]]*1\.8/sourceCompatibility = JavaVersion.VERSION_17/g' \
-              -e 's/targetCompatibility[[:space:]]*=[[:space:]]*1\.8/targetCompatibility = JavaVersion.VERSION_17/g' \
-              -e 's/sourceCompatibility[[:space:]]\+JavaVersion\.VERSION_1_8/sourceCompatibility JavaVersion.VERSION_17/g' \
-              -e 's/targetCompatibility[[:space:]]\+JavaVersion\.VERSION_1_8/targetCompatibility JavaVersion.VERSION_17/g' \
-              -e 's/jvmTarget[[:space:]]*=[[:space:]]*["'"'"']1\.8["'"'"']/jvmTarget = "17"/g' \
-              -e 's/jvmTarget[[:space:]]*=[[:space:]]*["'"'"']8["'"'"']/jvmTarget = "17"/g' \
+              -e 's/JavaVersion\.VERSION_1_8/JavaVersion.VERSION_1_8/g' \
+              -e 's/JavaVersion\.VERSION_8/JavaVersion.VERSION_1_8/g' \
+              -e 's/sourceCompatibility[[:space:]]*=[[:space:]]*["'"'"']1\.8["'"'"']/sourceCompatibility = JavaVersion.VERSION_1_8/g' \
+              -e 's/targetCompatibility[[:space:]]*=[[:space:]]*["'"'"']1\.8["'"'"']/targetCompatibility = JavaVersion.VERSION_1_8/g' \
+              -e 's/sourceCompatibility[[:space:]]*=[[:space:]]*1\.8/sourceCompatibility = JavaVersion.VERSION_1_8/g' \
+              -e 's/targetCompatibility[[:space:]]*=[[:space:]]*1\.8/targetCompatibility = JavaVersion.VERSION_1_8/g' \
+              -e 's/sourceCompatibility[[:space:]]\+JavaVersion\.VERSION_1_8/sourceCompatibility JavaVersion.VERSION_1_8/g' \
+              -e 's/targetCompatibility[[:space:]]\+JavaVersion\.VERSION_1_8/targetCompatibility JavaVersion.VERSION_1_8/g' \
+              -e 's/jvmTarget[[:space:]]*=[[:space:]]*["'"'"']1\.8["'"'"']/jvmTarget = "1.8"/g' \
+              -e 's/jvmTarget[[:space:]]*=[[:space:]]*["'"'"']8["'"'"']/jvmTarget = "1.8"/g' \
               "$f"
           done < <(find "$PROJECT_DIR" -type f \( -name "*.gradle" -o -name "*.gradle.kts" \))
 
@@ -78,9 +78,10 @@ jobs:
             perl -0pi -e 's/(android\s*\{)/$1\n    compileOptions {\n        sourceCompatibility = JavaVersion.VERSION_17\n        targetCompatibility = JavaVersion.VERSION_17\n    }/s' "$APP_GRADLE"
           fi
 
-          # Force le toolchain Kotlin 17 dans le module app.
-          if [ -f "$APP_GRADLE" ] && ! grep -q 'jvmToolchain(17)' "$APP_GRADLE"; then
-            printf '\n\nkotlin {\n    jvmToolchain(17)\n}\n' >> "$APP_GRADLE"
+          # Aucun jvmToolchain n'est injecté : le JDK de build reste Java 17,
+          # tandis que les bytecodes Java/Kotlin sont volontairement alignés en 1.8.
+          if [ -f "$APP_GRADLE" ]; then
+            sed -i '/jvmToolchain(17)/d' "$APP_GRADLE"
           fi
 
           echo "Verification des cibles JVM detectees :"
