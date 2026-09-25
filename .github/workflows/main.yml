@@ -54,18 +54,53 @@ jobs:
             sed -i 's/8\.7\.3/8.9.1/g' "$f"
           done < <(find "$PROJECT_DIR" -type f \( -name "*.gradle" -o -name "*.gradle.kts" \))
 
-          echo "Correction Java 17"
+          echo "Correction Java/Kotlin en JVM 17"
 
+          # Corrige les anciennes cibles Java 8/Kotlin 1.8 dans les fichiers Gradle.
           while IFS= read -r f; do
             sed -i \
               -e 's/JavaVersion\.VERSION_1_8/JavaVersion.VERSION_17/g' \
               -e 's/JavaVersion\.VERSION_8/JavaVersion.VERSION_17/g' \
-              -e 's/sourceCompatibility[[:space:]]*=[[:space:]]*1\.8/sourceCompatibility = 17/g' \
-              -e 's/targetCompatibility[[:space:]]*=[[:space:]]*1\.8/targetCompatibility = 17/g' \
+              -e 's/sourceCompatibility[[:space:]]*=[[:space:]]*["'"'"']1\.8["'"'"']/sourceCompatibility = JavaVersion.VERSION_17/g' \
+              -e 's/targetCompatibility[[:space:]]*=[[:space:]]*["'"'"']1\.8["'"'"']/targetCompatibility = JavaVersion.VERSION_17/g' \
+              -e 's/sourceCompatibility[[:space:]]*=[[:space:]]*1\.8/sourceCompatibility = JavaVersion.VERSION_17/g' \
+              -e 's/targetCompatibility[[:space:]]*=[[:space:]]*1\.8/targetCompatibility = JavaVersion.VERSION_17/g' \
+              -e 's/sourceCompatibility[[:space:]]\+JavaVersion\.VERSION_1_8/sourceCompatibility JavaVersion.VERSION_17/g' \
+              -e 's/targetCompatibility[[:space:]]\+JavaVersion\.VERSION_1_8/targetCompatibility JavaVersion.VERSION_17/g' \
               -e 's/jvmTarget[[:space:]]*=[[:space:]]*["'"'"']1\.8["'"'"']/jvmTarget = "17"/g' \
               -e 's/jvmTarget[[:space:]]*=[[:space:]]*["'"'"']8["'"'"']/jvmTarget = "17"/g' \
               "$f"
           done < <(find "$PROJECT_DIR" -type f \( -name "*.gradle" -o -name "*.gradle.kts" \))
+
+          # Force aussi compileOptions dans le module app si le projet n'en possède pas.
+          APP_GRADLE="$PROJECT_DIR/app/build.gradle.kts"
+          if [ -f "$APP_GRADLE" ] && grep -q 'android[[:space:]]*{' "$APP_GRADLE" && ! grep -q 'compileOptions[[:space:]]*{' "$APP_GRADLE"; then
+            python3 - "$APP_GRADLE" <<'PY'
+from pathlib import Path
+import sys
+
+p = Path(sys.argv[1])
+s = p.read_text()
+needle = "android {"
+insert = '''android {
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+'''
+if needle in s:
+    s = s.replace(needle, insert, 1)
+    p.write_text(s)
+PY
+          fi
+
+          # Force le toolchain Kotlin 17 dans le module app.
+          if [ -f "$APP_GRADLE" ] && ! grep -q 'jvmToolchain(17)' "$APP_GRADLE"; then
+            printf '\n\nkotlin {\n    jvmToolchain(17)\n}\n' >> "$APP_GRADLE"
+          fi
+
+          echo "Verification des cibles JVM detectees :"
+          grep -RniE 'VERSION_1_8|VERSION_8|jvmTarget|sourceCompatibility|targetCompatibility|jvmToolchain' "$PROJECT_DIR" --include='*.gradle' --include='*.gradle.kts' || true
 
           rm -f "$PROJECT_DIR/app/src/main/res/xml/health_permissions.xml"
 
