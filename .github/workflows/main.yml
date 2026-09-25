@@ -1,46 +1,56 @@
-name: Build Nous Sport V16 NATIF
+name: Build Nous Sport V16 TEST
 
 on:
   workflow_dispatch:
 
 jobs:
-  build-v16:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: Récupérer le dépôt
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Installer Java 17
+      - name: Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Installer Gradle 8.11.1
+      - name: Gradle 8.11.1
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
 
-      - name: Vérifier et extraire UNIQUEMENT V16
+      - name: Find V16 ZIP
         shell: bash
         run: |
           set -euo pipefail
-          ZIP="./nous-sport-v16-natif.zip"
-          test -f "$ZIP"
-          rm -rf v16-extracted
-          mkdir -p v16-extracted
-          unzip -q "$ZIP" -d v16-extracted
-          ROOT=$(find v16-extracted -type f -name settings.gradle -print -quit | xargs -r dirname)
-          test -n "$ROOT"
-          echo "V16 ROOT=$ROOT"
-          test -f "$ROOT/android/app/src/main/java/com/noussport/app/MainActivity.java" || true
+          ZIP=$(find . -maxdepth 3 -type f -name 'nous-sport-v16-correctif.zip' -print -quit)
+          if [ -z "$ZIP" ]; then
+            echo "ERREUR: nous-sport-v16-correctif.zip introuvable à la racine du dépôt."
+            exit 1
+          fi
+          rm -rf v16-build
+          mkdir -p v16-build
+          unzip -q "$ZIP" -d v16-build
+          ROOT=$(find v16-build -type f -name settings.gradle -print -quit | xargs -r dirname)
+          if [ -z "$ROOT" ]; then
+            echo "ERREUR: projet Android V16 introuvable."
+            exit 1
+          fi
+          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
+
+      - name: Build APK V16 TEST
+        shell: bash
+        run: |
+          set -euo pipefail
           cd "$ROOT"
           gradle wrapper --gradle-version 8.11.1 --distribution-type bin
           ./gradlew clean assembleDebug --no-daemon
 
-      - name: Publier UNIQUEMENT APK V16
+      - name: Publier APK V16 TEST
         uses: actions/upload-artifact@v4
         with:
-          name: NOUS-SPORT-V16-APK
-          path: v16-extracted/**/app/build/outputs/apk/debug/app-debug.apk
+          name: NOUS-SPORT-V16-TEST-APK
+          path: v16-build/**/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
