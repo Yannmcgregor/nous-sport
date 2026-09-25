@@ -1,4 +1,4 @@
-name: Build Nous Sport V17 INTERFACE
+name: Build Nous Sport V18 HEALTH CONNECT
 
 on:
   workflow_dispatch:
@@ -21,20 +21,20 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
-      - name: Extract exact V17 project
+      - name: Extract exact V18 project
         shell: bash
         run: |
           set -euo pipefail
-          unzip -q nous-sport-v17-interface.zip -d v17
-          ROOT=$(find v17 -type f -name settings.gradle -print -quit | xargs -r dirname)
+          unzip -q nous-sport-v18-healthconnect.zip -d v18
+          ROOT=$(find v18 -type f -name settings.gradle -print -quit | xargs -r dirname)
           test -n "$ROOT"
           cd "$ROOT"
           gradle wrapper --gradle-version 8.11.1 --distribution-type bin
           ./gradlew clean assembleDebug --no-daemon
 
-      - name: Upload V17 APK
+      - name: Upload V18 APK
         uses: actions/upload-artifact@v4
         with:
-          name: NOUS-SPORT-V17-INTERFACE-APK
-          path: v17/**/app/build/outputs/apk/debug/app-debug.apk
+          name: NOUS-SPORT-V18-HEALTHCONNECT-APK
+          path: v18/**/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
