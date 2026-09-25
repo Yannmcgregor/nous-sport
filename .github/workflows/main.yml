@@ -1,12 +1,11 @@
-name: Build Nous Sport Android
+name: Build Nous Sport V16 NATIF
 
 on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-v16:
     runs-on: ubuntu-latest
-
     steps:
       - name: Récupérer le dépôt
         uses: actions/checkout@v4
@@ -22,53 +21,26 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
-      - name: Trouver et extraire le ZIP corrigé
+      - name: Vérifier et extraire UNIQUEMENT V16
         shell: bash
         run: |
-          set -e
-          ZIP="$(find . -maxdepth 1 -type f -name 'nous-sport-v13-JVM17-AGP891-XML-corrige.zip' -print -quit)"
-          if [ -z "$ZIP" ]; then
-            echo "ZIP corrigé introuvable."
-            exit 1
-          fi
-          echo "ZIP utilisé : $ZIP"
-          rm -rf android_project
-          mkdir -p android_project
-          unzip -q "$ZIP" -d android_project
+          set -euo pipefail
+          ZIP="./nous-sport-v16-natif.zip"
+          test -f "$ZIP"
+          rm -rf v16-extracted
+          mkdir -p v16-extracted
+          unzip -q "$ZIP" -d v16-extracted
+          ROOT=$(find v16-extracted -type f -name settings.gradle -print -quit | xargs -r dirname)
+          test -n "$ROOT"
+          echo "V16 ROOT=$ROOT"
+          test -f "$ROOT/android/app/src/main/java/com/noussport/app/MainActivity.java" || true
+          cd "$ROOT"
+          gradle wrapper --gradle-version 8.11.1 --distribution-type bin
+          ./gradlew clean assembleDebug --no-daemon
 
-      - name: Trouver le projet Android
-        shell: bash
-        run: |
-          set -e
-          PROJECT_DIR="$(find android_project -type f \( -name 'settings.gradle' -o -name 'settings.gradle.kts' \) -print -quit | xargs -r dirname)"
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "Projet Android introuvable."
-            find android_project -maxdepth 6 -type f | sort
-            exit 1
-          fi
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Projet Android : $PROJECT_DIR"
-
-      - name: Préparer Gradle
-        shell: bash
-        run: |
-          set -e
-          cd "$PROJECT_DIR"
-          if [ ! -f gradlew ]; then
-            gradle wrapper --gradle-version 8.11.1
-          fi
-          chmod +x gradlew
-
-      - name: Construire APK Debug
-        shell: bash
-        run: |
-          set -e
-          cd "$PROJECT_DIR"
-          ./gradlew assembleDebug --no-daemon
-
-      - name: Récupérer APK
+      - name: Publier UNIQUEMENT APK V16
         uses: actions/upload-artifact@v4
         with:
-          name: nous-sport-debug-apk
-          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
+          name: NOUS-SPORT-V16-APK
+          path: v16-extracted/**/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
