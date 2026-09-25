@@ -54,21 +54,21 @@ jobs:
             sed -i 's/8\.7\.3/8.9.1/g' "$f"
           done < <(find "$PROJECT_DIR" -type f \( -name "*.gradle" -o -name "*.gradle.kts" \))
 
-          echo "Alignement Java/Kotlin sur JVM 1.8 (Java 17 reste le JDK de build)"
+          echo "Alignement Java/Kotlin sur JVM 17 (sans option JavaCompile --release)"
 
           # Corrige les anciennes cibles Java 8/Kotlin 1.8 dans les fichiers Gradle.
           while IFS= read -r f; do
             sed -i \
-              -e 's/JavaVersion\.VERSION_1_8/JavaVersion.VERSION_1_8/g' \
-              -e 's/JavaVersion\.VERSION_8/JavaVersion.VERSION_1_8/g' \
-              -e 's/sourceCompatibility[[:space:]]*=[[:space:]]*["'"'"']1\.8["'"'"']/sourceCompatibility = JavaVersion.VERSION_1_8/g' \
-              -e 's/targetCompatibility[[:space:]]*=[[:space:]]*["'"'"']1\.8["'"'"']/targetCompatibility = JavaVersion.VERSION_1_8/g' \
-              -e 's/sourceCompatibility[[:space:]]*=[[:space:]]*1\.8/sourceCompatibility = JavaVersion.VERSION_1_8/g' \
-              -e 's/targetCompatibility[[:space:]]*=[[:space:]]*1\.8/targetCompatibility = JavaVersion.VERSION_1_8/g' \
-              -e 's/sourceCompatibility[[:space:]]\+JavaVersion\.VERSION_1_8/sourceCompatibility JavaVersion.VERSION_1_8/g' \
-              -e 's/targetCompatibility[[:space:]]\+JavaVersion\.VERSION_1_8/targetCompatibility JavaVersion.VERSION_1_8/g' \
-              -e 's/jvmTarget[[:space:]]*=[[:space:]]*["'"'"']1\.8["'"'"']/jvmTarget = "1.8"/g' \
-              -e 's/jvmTarget[[:space:]]*=[[:space:]]*["'"'"']8["'"'"']/jvmTarget = "1.8"/g' \
+              -e 's/JavaVersion\.VERSION_1_8/JavaVersion.VERSION_17/g' \
+              -e 's/JavaVersion\.VERSION_8/JavaVersion.VERSION_17/g' \
+              -e 's/sourceCompatibility[[:space:]]*=[[:space:]]*["'"'"']1\.8["'"'"']/sourceCompatibility = JavaVersion.VERSION_17/g' \
+              -e 's/targetCompatibility[[:space:]]*=[[:space:]]*["'"'"']1\.8["'"'"']/targetCompatibility = JavaVersion.VERSION_17/g' \
+              -e 's/sourceCompatibility[[:space:]]*=[[:space:]]*1\.8/sourceCompatibility = JavaVersion.VERSION_17/g' \
+              -e 's/targetCompatibility[[:space:]]*=[[:space:]]*1\.8/targetCompatibility = JavaVersion.VERSION_17/g' \
+              -e 's/sourceCompatibility[[:space:]]\+JavaVersion\.VERSION_1_8/sourceCompatibility JavaVersion.VERSION_17/g' \
+              -e 's/targetCompatibility[[:space:]]\+JavaVersion\.VERSION_1_8/targetCompatibility JavaVersion.VERSION_17/g' \
+              -e 's/jvmTarget[[:space:]]*=[[:space:]]*["'"'"']1\.8["'"'"']/jvmTarget = "17"/g' \
+              -e 's/jvmTarget[[:space:]]*=[[:space:]]*["'"'"']8["'"'"']/jvmTarget = "17"/g' \
               "$f"
           done < <(find "$PROJECT_DIR" -type f \( -name "*.gradle" -o -name "*.gradle.kts" \))
 
@@ -78,10 +78,20 @@ jobs:
             perl -0pi -e 's/(android\s*\{)/$1\n    compileOptions {\n        sourceCompatibility = JavaVersion.VERSION_17\n        targetCompatibility = JavaVersion.VERSION_17\n    }/s' "$APP_GRADLE"
           fi
 
-          # Aucun jvmToolchain n'est injecté : le JDK de build reste Java 17,
-          # tandis que les bytecodes Java/Kotlin sont volontairement alignés en 1.8.
+          # Le JDK de build reste Java 17. Les tâches Java/Kotlin sont alignées sur JVM 17.
           if [ -f "$APP_GRADLE" ]; then
             sed -i '/jvmToolchain(17)/d' "$APP_GRADLE"
+            cat >> "$APP_GRADLE" <<'KOTLIN_EOF'
+
+          // Dernier verrou d'alignement : Java et Kotlin ciblent tous deux JVM 17.
+          tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+              kotlinOptions.jvmTarget = "17"
+          }
+          tasks.withType<JavaCompile>().configureEach {
+              sourceCompatibility = "17"
+              targetCompatibility = "17"
+          }
+          KOTLIN_EOF
           fi
 
           echo "Verification des cibles JVM detectees :"
@@ -126,11 +136,7 @@ jobs:
           echo "GRADLEW=$PROJECT_DIR/gradlew" >> "$GITHUB_ENV"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-          echo "Verification finale : aucune configuration options.release ne doit rester"
-          ! grep -RniE 'options\.release|compilerOptions.*release' "$PROJECT_DIR" --include='*.gradle' --include='*.gradle.kts' || {
-            echo "Une configuration release Java incompatible a ete detectee."
-            exit 1
-          }
+
 
           echo "INIT_SCRIPT=$INIT_SCRIPT" >> "$GITHUB_ENV"
 
