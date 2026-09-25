@@ -74,24 +74,8 @@ jobs:
 
           # Force aussi compileOptions dans le module app si le projet n'en possède pas.
           APP_GRADLE="$PROJECT_DIR/app/build.gradle.kts"
-          if [ -f "$APP_GRADLE" ] && grep -q 'android[[:space:]]*{' "$APP_GRADLE" && ! grep -q 'compileOptions[[:space:]]*{' "$APP_GRADLE"; then
-            python3 - "$APP_GRADLE" <<'PY'
-from pathlib import Path
-import sys
-
-p = Path(sys.argv[1])
-s = p.read_text()
-needle = "android {"
-insert = '''android {
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
-'''
-if needle in s:
-    s = s.replace(needle, insert, 1)
-    p.write_text(s)
-PY
+          if [ -f "$APP_GRADLE" ] && ! grep -q 'compileOptions[[:space:]]*{' "$APP_GRADLE"; then
+            perl -0pi -e 's/(android\s*\{)/$1\n    compileOptions {\n        sourceCompatibility = JavaVersion.VERSION_17\n        targetCompatibility = JavaVersion.VERSION_17\n    }/s' "$APP_GRADLE"
           fi
 
           # Force le toolchain Kotlin 17 dans le module app.
