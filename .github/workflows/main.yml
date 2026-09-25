@@ -112,14 +112,35 @@ jobs:
           gradle wrapper --gradle-version 8.11.1
           chmod +x gradlew
 
+          # Forçage final et fiable de Java 17 et Kotlin 17 pour toutes les tâches Gradle.
+          INIT_SCRIPT="$GITHUB_WORKSPACE/force-jvm17.init.gradle"
+          printf '%s\n' \
+            'allprojects {' \
+            '    tasks.configureEach { task ->' \
+            '        if (task instanceof org.gradle.api.tasks.compile.JavaCompile) {' \
+            '            task.sourceCompatibility = "17"' \
+            '            task.targetCompatibility = "17"' \
+            '            task.options.release.set(17)' \
+            '        }' \
+            '        if (task.name.matches(".*[Kk]otlin.*[Cc]ompile.*") || task.name.matches("[Cc]ompile.*[Kk]otlin")) {' \
+            '            try {' \
+            '                task.kotlinOptions.jvmTarget = "17"' \
+            '            } catch (Exception ignored) {' \
+            '            }' \
+            '        }' \
+            '    }' \
+            '}' > "$INIT_SCRIPT"
+
           echo "GRADLEW=$PROJECT_DIR/gradlew" >> "$GITHUB_ENV"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "INIT_SCRIPT=$INIT_SCRIPT" >> "$GITHUB_ENV"
 
       - name: Construire APK
         shell: bash
         run: |
           cd "$PROJECT_DIR"
-          ./gradlew assembleDebug --no-daemon
+          echo "Forçage final Java 17 / Kotlin 17 via Gradle init script"
+          ./gradlew --init-script "$INIT_SCRIPT" assembleDebug --no-daemon
 
       - name: Recuperer APK
         uses: actions/upload-artifact@v4
