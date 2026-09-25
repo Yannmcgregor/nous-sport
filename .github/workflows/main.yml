@@ -17,7 +17,12 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Trouver le ZIP corrigé
+      - name: Installer Gradle 8.11.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Trouver et extraire le ZIP corrigé
         shell: bash
         run: |
           set -e
@@ -26,35 +31,48 @@ jobs:
             echo "ZIP corrigé introuvable."
             exit 1
           fi
+
           echo "ZIP utilisé : $ZIP"
-          rm -rf android
-          mkdir -p android
-          unzip -q "$ZIP" -d android
+          rm -rf android_project
+          mkdir -p android_project
+          unzip -q "$ZIP" -d android_project
 
       - name: Trouver le projet Android
         shell: bash
         run: |
           set -e
-          PROJECT_DIR="$(find android -type f -name 'gradlew' -print -quit | xargs -r dirname)"
+
+          PROJECT_DIR="$(find android_project -type f \( -name 'settings.gradle' -o -name 'settings.gradle.kts' \) -print -quit | xargs -r dirname)"
+
           if [ -z "$PROJECT_DIR" ]; then
             echo "Projet Android introuvable."
-            find android -maxdepth 4 -type f | head -100
+            find android_project -maxdepth 5 -type f | sort
             exit 1
           fi
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
-          echo "Projet Android : $PROJECT_DIR"
 
-      - name: Rendre Gradle exécutable
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Projet Android trouvé : $PROJECT_DIR"
+
+      - name: Préparer le wrapper Gradle
         shell: bash
         run: |
-          chmod +x "$PROJECT_DIR/gradlew"
+          set -e
+          cd "$PROJECT_DIR"
+
+          if [ ! -f gradlew ]; then
+            echo "Wrapper absent : création du wrapper Gradle 8.11.1"
+            gradle wrapper --gradle-version 8.11.1
+          fi
+
+          chmod +x gradlew
 
       - name: Construire APK Debug
         shell: bash
         run: |
           set -e
           cd "$PROJECT_DIR"
-          echo "Construction avec Java 17"
+
+          echo "Construction avec Java 17 / Gradle 8.11.1"
           ./gradlew assembleDebug --no-daemon
 
       - name: Récupérer APK
