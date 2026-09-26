@@ -17,14 +17,16 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.11.1'
+      - name: Unzip V21
+        run: |
+          unzip -o V21.zip -d .
+          test -f project/android/settings.gradle
+          test -f project/android/app/build.gradle
 
       - name: Build APK
         run: |
-          gradle wrapper --gradle-version 8.11.1 --distribution-type bin
+          cd project/android
+          gradle wrapper --gradle-version 8.11.1
           chmod +x gradlew
           ./gradlew clean assembleDebug --no-daemon
 
@@ -32,5 +34,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: V21
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: project/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
