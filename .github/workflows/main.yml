@@ -1,4 +1,4 @@
-name: Build Nous Sport V18 HEALTH CONNECT
+name: Build Nous Sport V19 HEALTH CONNECT CORRIGE
 
 on:
   workflow_dispatch:
@@ -21,20 +21,20 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
-      - name: Extract exact V18 project
+      - name: Extract exact V19 project
         shell: bash
         run: |
           set -euo pipefail
-          unzip -q nous-sport-v18-healthconnect.zip -d v18
-          ROOT=$(find v18 -type f -name settings.gradle -print -quit | xargs -r dirname)
+          unzip -q nous-sport-v19-healthconnect-corrige.zip -d v19
+          ROOT=$(find v19 -type f -name settings.gradle -print -quit | xargs -r dirname)
           test -n "$ROOT"
           cd "$ROOT"
           gradle wrapper --gradle-version 8.11.1 --distribution-type bin
           ./gradlew clean assembleDebug --no-daemon
 
-      - name: Upload V18 APK
+      - name: Upload V19 APK
         uses: actions/upload-artifact@v4
         with:
-          name: NOUS-SPORT-V18-HEALTHCONNECT-APK
-          path: v18/**/app/build/outputs/apk/debug/app-debug.apk
+          name: NOUS-SPORT-V19-HEALTHCONNECT-CORRIGE-APK
+          path: v19/**/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
