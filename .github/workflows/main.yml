@@ -1,4 +1,4 @@
-name: Build Nous Sport V20
+name: Build Nous Sport V21
 
 on:
   workflow_dispatch:
@@ -17,28 +17,20 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Gradle 8.11.1
+      - name: Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
 
-      - name: Extraire V20
-        shell: bash
+      - name: Build APK
         run: |
-          set -euo pipefail
-          rm -rf project
-          mkdir project
-          unzip -q V20.zip -d project
-          test -f project/android/settings.gradle
-          test -f project/android/app/build.gradle
-          cd project/android
-          gradle wrapper --gradle-version 8.11.1
+          gradle wrapper --gradle-version 8.11.1 --distribution-type bin
           chmod +x gradlew
           ./gradlew clean assembleDebug --no-daemon
 
-      - name: Upload V20 APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: V20
-          path: project/android/app/build/outputs/apk/debug/app-debug.apk
+          name: V21
+          path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
