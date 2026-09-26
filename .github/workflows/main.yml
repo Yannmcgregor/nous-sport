@@ -26,7 +26,7 @@ jobs:
         shell: bash
         run: |
           set -e
-          unzip -o 'Nous-Sport-V29-5-FIX-WEBVIEW-FIX-FETCH.zip' -d .
+          unzip -o 'Nous-Sport-V29-5-FIX-WEBVIEW.zip' -d .
           test -d android
           test -f android/app/build.gradle
           test -f android/app/src/main/assets/index.html
