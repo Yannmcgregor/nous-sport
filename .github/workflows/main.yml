@@ -1,4 +1,4 @@
-name: Build Nous Sport V29.5 FIX URL
+name: Build Nous Sport V29.5 FIX WEBVIEW
 
 on:
   workflow_dispatch:
@@ -22,20 +22,22 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
-      - name: Unzip V29.5 FIX URL
+      - name: Unzip V29.5 FIX WEBVIEW
         shell: bash
         run: |
           set -e
-          unzip -o 'Nous-Sport-V29-5-corrige-analyse-repas-FIX-URL.zip' -d .
+          unzip -o 'Nous-Sport-V29-5-FIX-WEBVIEW.zip' -d .
           test -d android
           test -f android/app/build.gradle
+          test -f android/app/src/main/assets/index.html
 
-      - name: Verify meal bridge
+      - name: Verify WebView HTTPS origin fix
         shell: bash
         run: |
           set -e
-          grep -Fq "supabase.functions.invoke('analyze-meal'" android/app/src/main/assets/src/main.js
-          ! grep -Fq 'fetch(`${url}/functions/v1/analyze-meal`' android/app/src/main/assets/src/main.js
+          grep -Fq 'web.loadDataWithBaseURL' android/app/src/main/java/com/noussport/app/MainActivity.kt
+          grep -Fq 'https://noussport.local/' android/app/src/main/java/com/noussport/app/MainActivity.kt
+          grep -Fq "supabase.functions.invoke('analyze-meal'" android/app/src/main/assets/index.html
 
       - name: Build APK
         shell: bash
@@ -49,6 +51,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: NOUS-SPORT-V29-5-FIX-URL-APK
+          name: NOUS-SPORT-V29-5-FIX-WEBVIEW-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
