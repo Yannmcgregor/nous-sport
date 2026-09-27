@@ -1,0 +1,64 @@
+name: Build Nous Sport V33 PAUSE FEU CALORIES
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Gradle 8.11.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Find and extract V33 project
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP="$(find . -maxdepth 2 -type f -iname '*V33*PAUSE*FEU*CALORIES*.zip' -print -quit)"
+          if [ -z "$ZIP" ]; then
+            echo "ERROR: V33 ZIP not found"
+            find . -maxdepth 2 -type f -iname '*.zip' -print
+            exit 1
+          fi
+          unzip -o "$ZIP" -d .
+          test -f android/app/build.gradle
+
+      - name: Verify V33 features
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'togglePauseWorkout' android/app/src/main/assets/src/main.js
+          grep -Fq 'fireworks.mp4' android/app/src/main/assets/src/main.js
+          grep -Fq 'quitCompletion' android/app/src/main/assets/src/main.js
+          grep -Fq 'eatenCalories' android/app/src/main/assets/src/main.js
+          test -f android/app/src/main/assets/fireworks.mp4
+
+      - name: Build APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd android
+          gradle wrapper --gradle-version 8.11.1
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: NOUS-SPORT-V33-PAUSE-FEU-CALORIES-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
