@@ -1,0 +1,77 @@
+name: Build Nous Sport V38 CONNEXION EMAIL CODE LOGO
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Find V38 ZIP
+        shell: bash
+        run: |
+          set -e
+          ZIP="$(find . -maxdepth 2 -type f -iname '*V38*CONNEXION*EMAIL*CODE*LOGO*.zip' -print -quit)"
+          if [ -z "$ZIP" ]; then
+            echo "Aucun ZIP V38 trouvé."
+            exit 1
+          fi
+          echo "ZIP trouvé : $ZIP"
+          echo "V38_ZIP=$ZIP" >> "$GITHUB_ENV"
+
+      - name: Extract V38 Android project
+        shell: bash
+        run: |
+          set -e
+          rm -rf v38-extracted
+          mkdir -p v38-extracted
+          unzip -q -o "$V38_ZIP" -d v38-extracted
+          ANDROID_DIR="$(find v38-extracted -type f -path '*/android/app/build.gradle' -print -quit | sed 's#/app/build.gradle##')"
+          if [ -z "$ANDROID_DIR" ]; then
+            echo "Projet Android V38 introuvable."
+            exit 1
+          fi
+          echo "ANDROID_DIR=$ANDROID_DIR" >> "$GITHUB_ENV"
+
+      - name: Verify V38 connexion and logo
+        shell: bash
+        run: |
+          set -e
+          grep -Fq '/auth/v1/otp' "$ANDROID_DIR/app/src/main/assets/index.html"
+          grep -Fq '/auth/v1/verify' "$ANDROID_DIR/app/src/main/assets/index.html"
+          grep -Fq "SESSION_KEY='noussport-supabase-session-v38'" "$ANDROID_DIR/app/src/main/assets/index.html"
+          grep -Fq 'android:icon="@mipmap/ic_launcher"' "$ANDROID_DIR/app/src/main/AndroidManifest.xml"
+          test -f "$ANDROID_DIR/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png"
+          grep -Fq "versionCode 78" "$ANDROID_DIR/app/build.gradle"
+
+      - name: Build APK
+        shell: bash
+        run: |
+          set -e
+          cd "$ANDROID_DIR"
+          if [ ! -f gradlew ]; then
+            gradle wrapper --gradle-version 8.11.1
+          fi
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nous-Sport-V38-APK
+          path: '**/build/outputs/apk/debug/*.apk'
+          if-no-files-found: error
