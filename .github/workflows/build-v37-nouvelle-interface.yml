@@ -1,0 +1,78 @@
+name: Build Nous Sport V37 NOUVELLE INTERFACE
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Find V37 ZIP
+        shell: bash
+        run: |
+          set -e
+          ZIP="$(find . -maxdepth 2 -type f -iname '*V37*NOUVELLE*INTERFACE*.zip' -print -quit)"
+          if [ -z "$ZIP" ]; then
+            echo "Aucun ZIP V37 trouvé."
+            exit 1
+          fi
+          echo "V37 ZIP : $ZIP"
+          echo "V37_ZIP=$ZIP" >> "$GITHUB_ENV"
+
+      - name: Extract V37 Android project
+        shell: bash
+        run: |
+          set -e
+          rm -rf v37-extracted
+          mkdir -p v37-extracted
+          unzip -q -o "$V37_ZIP" -d v37-extracted
+          ANDROID_DIR="$(find v37-extracted -type f -path '*/android/app/build.gradle' -print -quit | sed 's#/app/build.gradle##')"
+          if [ -z "$ANDROID_DIR" ]; then
+            echo "Projet Android V37 introuvable."
+            exit 1
+          fi
+          echo "ANDROID_DIR=$ANDROID_DIR" >> "$GITHUB_ENV"
+
+      - name: Verify V37 interface is connected
+        shell: bash
+        run: |
+          set -e
+          INDEX="$ANDROID_DIR/app/src/main/assets/index.html"
+          grep -Fq 'hero-v36' "$INDEX"
+          grep -Fq 'quick-stats' "$INDEX"
+          grep -Fq 'goals-v36' "$INDEX"
+          grep -Fq 'workout-launch' "$INDEX"
+          grep -Fq 'health-card' "$INDEX"
+          echo "Interface V37 correctement branchée dans l'index Android."
+
+      - name: Build APK
+        shell: bash
+        run: |
+          set -e
+          cd "$ANDROID_DIR"
+          if [ ! -f gradlew ]; then
+            gradle wrapper --gradle-version 8.11.1
+          fi
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nous-Sport-V37-APK
+          path: '**/build/outputs/apk/debug/*.apk'
+          if-no-files-found: error
