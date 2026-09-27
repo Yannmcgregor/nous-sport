@@ -1,0 +1,78 @@
+name: Build Nous Sport V45 SANTE CONNECT CORRIGE
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Find V45 ZIP
+        shell: bash
+        run: |
+          set -e
+          ZIP="$(find . -maxdepth 2 -type f -iname '*V45*SANTE*CONNECT*.zip' -print -quit)"
+          if [ -z "$ZIP" ]; then
+            echo "Aucun ZIP V45 trouvé."
+            exit 1
+          fi
+          echo "V45 ZIP : $ZIP"
+          echo "V45_ZIP=$ZIP" >> "$GITHUB_ENV"
+
+      - name: Extract V45 Android project
+        shell: bash
+        run: |
+          set -e
+          rm -rf v45-extracted
+          mkdir -p v45-extracted
+          unzip -q -o "$V45_ZIP" -d v45-extracted
+          ANDROID_DIR="$(find v45-extracted -type f -path '*/android/app/build.gradle' -print -quit | sed 's#/app/build.gradle##')"
+          if [ -z "$ANDROID_DIR" ]; then
+            echo "Projet Android V45 introuvable."
+            exit 1
+          fi
+          echo "ANDROID_DIR=$ANDROID_DIR" >> "$GITHUB_ENV"
+          echo "Projet Android : $ANDROID_DIR"
+
+      - name: Verify workoutState correction
+        shell: bash
+        run: |
+          set -e
+          INDEX="$ANDROID_DIR/app/src/main/assets/index.html"
+          GRADLE="$ANDROID_DIR/app/build.gradle"
+          grep -Fq 'let workoutState=null, workoutTimerId=null, workoutPollId=null, lastWorkoutData=null' "$INDEX"
+          grep -Fq 'versionCode 86' "$GRADLE"
+          grep -Fq "versionName '0.9.9'" "$GRADLE"
+          echo "Correction workoutState OK."
+
+      - name: Build APK
+        shell: bash
+        run: |
+          set -e
+          cd "$ANDROID_DIR"
+          if [ ! -f gradlew ]; then
+            gradle wrapper --gradle-version 8.11.1
+          fi
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nous-Sport-V45-SANTE-CONNECT-APK
+          path: '**/build/outputs/apk/debug/*.apk'
+          if-no-files-found: error
