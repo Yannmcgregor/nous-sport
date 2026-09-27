@@ -1,4 +1,4 @@
-name: Build Nous Sport V31 FIX ANALYSE NATIF
+name: Build Nous Sport V32 FIX IMAGE
 
 on:
   workflow_dispatch:
@@ -6,7 +6,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,35 +21,30 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
-      - name: Find and extract corrected V31 project
+      - name: Find and extract V32 project
         shell: bash
         run: |
           set -euo pipefail
-          ZIP="$(find . -maxdepth 3 -type f -iname '*CORRIGE*.zip' -print -quit)"
+          ZIP="$(find . -maxdepth 2 -type f -iname '*V32*FIX*IMAGE*.zip' -print -quit)"
           if [ -z "$ZIP" ]; then
-            echo "ERROR: corrected V31 ZIP not found"
-            echo "ZIP files present:"
-            find . -maxdepth 3 -type f -iname '*.zip' -print
+            echo "ERROR: V32 ZIP not found"
+            find . -maxdepth 2 -type f -iname '*.zip' -print
             exit 1
           fi
-          echo "Using ZIP: $ZIP"
           unzip -o "$ZIP" -d .
           test -f android/app/build.gradle
 
-      - name: Verify Supabase URL
+      - name: Verify image payload fix
         shell: bash
         run: |
           set -euo pipefail
-          echo "Checking corrected Supabase URL..."
-          if grep -RIn "lykabwqpnjkuntnommpb.supabase.co" android/app/src/main/assets src .env.example 2>/dev/null; then
-            echo "ERROR: OLD Supabase URL is still present"
+          grep -Fq "functions.invoke('analyze-meal'" android/app/src/main/assets/src/main.js
+          grep -Fq 'imageDataUrl:mealImageDataUrl' android/app/src/main/assets/src/main.js
+          grep -Fq 'imageDataUrl:mealImageDataUrl' src/main.js
+          if grep -Fq 'base64:mealImageDataUrl' android/app/src/main/assets/src/main.js; then
+            echo 'ERROR: old base64-only payload still present'
             exit 1
           fi
-          if ! grep -RIn "lykabwqpnjkuntnonmpb.supabase.co" android/app/src/main/assets src .env.example 2>/dev/null; then
-            echo "ERROR: CORRECT Supabase URL was not found"
-            exit 1
-          fi
-          echo "Supabase URL OK."
 
       - name: Build APK
         shell: bash
@@ -61,9 +55,9 @@ jobs:
           chmod +x gradlew
           ./gradlew clean assembleDebug --no-daemon
 
-      - name: Upload corrected APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: NOUS-SPORT-V31-CORRIGE-APK
+          name: NOUS-SPORT-V32-FIX-IMAGE-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
