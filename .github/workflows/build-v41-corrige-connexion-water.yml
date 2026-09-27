@@ -1,0 +1,108 @@
+name: Build Nous Sport V41 CORRIGE CONNEXION WATER
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Find V41 ZIP
+        shell: bash
+        run: |
+          set -e
+          ZIP="$(find . -maxdepth 2 -type f -iname '*V41*CORRIGE*CONNEXION*.zip' -print -quit)"
+          if [ -z "$ZIP" ]; then
+            echo "Aucun ZIP V41 trouvé."
+            exit 1
+          fi
+          echo "V41 trouvé : $ZIP"
+          echo "V41_ZIP=$ZIP" >> "$GITHUB_ENV"
+
+      - name: Extract V41 Android project
+        shell: bash
+        run: |
+          set -e
+          rm -rf v41-extracted
+          mkdir -p v41-extracted
+          unzip -q -o "$V41_ZIP" -d v41-extracted
+          ANDROID_DIR="$(find v41-extracted -type f -path '*/android/app/build.gradle' -print -quit | sed 's#/app/build.gradle##')"
+          if [ -z "$ANDROID_DIR" ]; then
+            echo "Projet Android V41 introuvable."
+            exit 1
+          fi
+          echo "ANDROID_DIR=$ANDROID_DIR" >> "$GITHUB_ENV"
+          echo "Projet Android : $ANDROID_DIR"
+
+      - name: Verify V41 completely
+        shell: bash
+        run: |
+          set -e
+          ASSET="$ANDROID_DIR/app/src/main/assets/index.html"
+          GRADLE="$ANDROID_DIR/app/build.gradle"
+          ACTIVITY="$ANDROID_DIR/app/src/main/java/com/noussport/app/MainActivity.kt"
+          MANIFEST="$ANDROID_DIR/app/src/main/AndroidManifest.xml"
+
+          test -f "$ASSET"
+          test -f "$GRADLE"
+          test -f "$ACTIVITY"
+          test -f "$MANIFEST"
+
+          grep -Fq "const $ = id => document.getElementById(id)" "$ASSET"
+          grep -Fq 'const STEP_GOAL=10000' "$ASSET"
+          grep -Fq 'const CAL_GOAL=500' "$ASSET"
+          grep -Fq 'const WATER_GOAL=2000' "$ASSET"
+          grep -Fq 'const WATER_STEP=100' "$ASSET"
+          grep -Fq '/auth/v1/otp' "$ASSET"
+          grep -Fq '/auth/v1/verify' "$ASSET"
+          grep -Fq 'web.loadDataWithBaseURL' "$ACTIVITY"
+          grep -Fq 'appassets.androidplatform.net/assets/' "$ACTIVITY"
+          grep -Fq 'versionCode 82' "$GRADLE"
+          grep -Fq "versionName '0.9.5'" "$GRADLE"
+          grep -Fq 'android:icon="@mipmap/ic_launcher"' "$MANIFEST"
+          test -f "$ANDROID_DIR/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png"
+
+          # Syntax-check the JavaScript embedded in the Android asset.
+          python3 - "$ASSET" <<'PY'
+          import re, sys
+          from pathlib import Path
+          html = Path(sys.argv[1]).read_text(encoding="utf-8")
+          scripts = re.findall(r'<script>(.*?)</script>', html, re.S)
+          if not scripts:
+              raise SystemExit("Aucun script JavaScript intégré trouvé.")
+          Path("/tmp/nous-sport-v41.js").write_text("\n".join(scripts), encoding="utf-8")
+          PY
+          node --check /tmp/nous-sport-v41.js
+          echo "V41 vérifiée : JavaScript OK, constantes OK, OTP OK, WebView OK, version 0.9.5 OK."
+
+      - name: Build APK
+        shell: bash
+        run: |
+          set -e
+          cd "$ANDROID_DIR"
+          if [ ! -f gradlew ]; then
+            gradle wrapper --gradle-version 8.11.1
+          fi
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nous-Sport-V41-CORRIGE-APK
+          path: '**/build/outputs/apk/debug/*.apk'
+          if-no-files-found: error
