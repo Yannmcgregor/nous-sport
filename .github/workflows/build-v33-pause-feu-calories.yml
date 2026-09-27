@@ -25,73 +25,93 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
-      - name: Find and extract V34 project
+      - name: Find and extract Android V34 project
         shell: bash
         run: |
           set -euo pipefail
-
-          echo "========================================"
-          echo "RECHERCHE DU PROJET V34"
-          echo "========================================"
-
-          echo "ZIP V34 trouvés dans le dépôt :"
-          find . -type f -iname "*V34*.zip" -print
-
-          ZIP_FILE="$(find . -type f -iname '*V34*.zip' | head -n 1 || true)"
-
-          if [ -z "$ZIP_FILE" ]; then
-            echo "ERREUR : aucun ZIP V34 trouvé."
-            echo ""
-            echo "ZIP disponibles dans le dépôt :"
-            find . -type f -iname "*.zip" -print
-            exit 1
-          fi
-
-          echo "ZIP V34 trouvé : $ZIP_FILE"
 
           rm -rf v34-project
           mkdir -p v34-project
 
-          unzip -q "$ZIP_FILE" -d v34-project
+          echo "=== Recherche des ZIP V34 ==="
+          mapfile -t V34_ZIPS < <(find . -type f -iname "*V34*.zip" -print)
 
-          echo "Projet V34 extrait."
-          find v34-project -maxdepth 3 -type f | head -150
-
-      - name: Locate Android project
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          GRADLEW="$(find "$GITHUB_WORKSPACE/v34-project" -type f -name "gradlew" -print -quit || true)"
-
-          if [ -z "$GRADLEW" ]; then
-            echo "ERREUR : gradlew introuvable dans le projet V34."
-            find "$GITHUB_WORKSPACE/v34-project" -maxdepth 5 -type f | head -250
+          if [ "${#V34_ZIPS[@]}" -eq 0 ]; then
+            echo "ERREUR : aucun ZIP V34 trouvé."
+            find . -type f -iname "*.zip" -print
             exit 1
           fi
 
-          PROJECT_DIR="$(dirname "$GRADLEW")"
+          echo "ZIP V34 trouvés :"
+          printf '%s\n' "${V34_ZIPS[@]}"
 
-          echo "Projet Android trouvé : $PROJECT_DIR"
-          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          FOUND=""
 
-      - name: Prepare Gradle wrapper
-        shell: bash
-        run: |
-          set -euo pipefail
-          chmod +x "$PROJECT_DIR/gradlew"
+          for ZIP in "${V34_ZIPS[@]}"; do
+            echo ""
+            echo "=== Test du ZIP : $ZIP ==="
+
+            rm -rf v34-test
+            mkdir -p v34-test
+            unzip -q "$ZIP" -d v34-test
+
+            GRADLEW="$(find v34-test -type f -name "gradlew" -print -quit || true)"
+
+            if [ -n "$GRADLEW" ]; then
+              PROJECT_DIR="$(dirname "$GRADLEW")"
+              rm -rf v34-project
+              mkdir -p v34-project
+              cp -a "$PROJECT_DIR"/. v34-project/
+              FOUND="yes"
+              echo "Projet Android trouvé directement : $PROJECT_DIR"
+              break
+            fi
+
+            echo "Pas de gradlew directement dans ce ZIP."
+
+            while IFS= read -r NESTED_ZIP; do
+              echo "Test du ZIP interne : $NESTED_ZIP"
+
+              rm -rf nested-test
+              mkdir -p nested-test
+              unzip -q "$NESTED_ZIP" -d nested-test || continue
+
+              GRADLEW="$(find nested-test -type f -name "gradlew" -print -quit || true)"
+
+              if [ -n "$GRADLEW" ]; then
+                PROJECT_DIR="$(dirname "$GRADLEW")"
+                rm -rf v34-project
+                mkdir -p v34-project
+                cp -a "$PROJECT_DIR"/. v34-project/
+                FOUND="yes"
+                echo "Projet Android trouvé dans un ZIP interne : $NESTED_ZIP"
+                break 2
+              fi
+            done < <(find v34-test -type f -iname "*.zip" -print)
+          done
+
+          if [ -z "$FOUND" ]; then
+            echo ""
+            echo "ERREUR : aucun projet Android V34 contenant gradlew n'a été trouvé."
+            echo ""
+            echo "Contenu du V34 trouvé :"
+            find v34-test -maxdepth 4 -type f -print | head -200
+            exit 1
+          fi
+
+          chmod +x v34-project/gradlew
+
+          echo ""
+          echo "=== Projet Android sélectionné ==="
+          find v34-project -maxdepth 2 -type f | head -100
 
       - name: Build APK
         shell: bash
         run: |
           set -euo pipefail
+          cd "$GITHUB_WORKSPACE/v34-project"
 
-          cd "$PROJECT_DIR"
-
-          echo "========================================"
-          echo "BUILD APK"
-          echo "========================================"
-
+          echo "=== BUILD APK V34 ==="
           ./gradlew assembleDebug --stacktrace --no-daemon
 
       - name: Find generated APK
@@ -99,10 +119,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "APK générés :"
-          find "$PROJECT_DIR" -type f -name "*.apk" -print
+          echo "=== APK générés ==="
+          find "$GITHUB_WORKSPACE/v34-project" -type f -name "*.apk" -print
 
-          APK="$(find "$PROJECT_DIR" -type f -name "*.apk" | head -n 1 || true)"
+          APK="$(find "$GITHUB_WORKSPACE/v34-project" -type f -name "*.apk" | head -n 1 || true)"
 
           if [ -z "$APK" ]; then
             echo "ERREUR : aucun APK généré."
