@@ -22,24 +22,35 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
-      - name: Extract corrected V31 project
+      - name: Find and extract corrected V31 project
         shell: bash
         run: |
           set -euo pipefail
-          unzip -o "Nous-Sport-V31-FIX-ANALYSE-NATIF-CORRIGE.zip" -d .
-          test -d android
+          ZIP="$(find . -maxdepth 3 -type f -iname '*CORRIGE*.zip' -print -quit)"
+          if [ -z "$ZIP" ]; then
+            echo "ERROR: corrected V31 ZIP not found"
+            echo "ZIP files present:"
+            find . -maxdepth 3 -type f -iname '*.zip' -print
+            exit 1
+          fi
+          echo "Using ZIP: $ZIP"
+          unzip -o "$ZIP" -d .
           test -f android/app/build.gradle
 
       - name: Verify Supabase URL
         shell: bash
         run: |
           set -euo pipefail
-          echo "Checking Supabase URL..."
-          grep -RIn "lykabwqpnjkuntnonmpb.supabase.co" android/app/src/main/assets src .env.example
-          if grep -RIn "lykabwqpnjkuntnommpb.supabase.co" android/app/src/main/assets src .env.example; then
-            echo "ERROR: old Supabase URL is still present"
+          echo "Checking corrected Supabase URL..."
+          if grep -RIn "lykabwqpnjkuntnommpb.supabase.co" android/app/src/main/assets src .env.example 2>/dev/null; then
+            echo "ERROR: OLD Supabase URL is still present"
             exit 1
           fi
+          if ! grep -RIn "lykabwqpnjkuntnonmpb.supabase.co" android/app/src/main/assets src .env.example 2>/dev/null; then
+            echo "ERROR: CORRECT Supabase URL was not found"
+            exit 1
+          fi
+          echo "Supabase URL OK."
 
       - name: Build APK
         shell: bash
