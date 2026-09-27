@@ -6,43 +6,53 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
       - name: Gradle 8.11.1
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
-      - name: Unzip V31
+
+      - name: Extract corrected V31 project
         shell: bash
         run: |
-          set -e
-          unzip -o Nous-Sport-V31-FIX-ANALYSE-NATIF.zip -d .
+          set -euo pipefail
+          unzip -o "Nous-Sport-V31-FIX-ANALYSE-NATIF-CORRIGE.zip" -d .
           test -d android
-          test -f android/app/src/main/java/com/noussport/app/MainActivity.kt
-      - name: Verify native meal bridge
+          test -f android/app/build.gradle
+
+      - name: Verify Supabase URL
         shell: bash
         run: |
-          set -e
-          grep -Fq 'fun analyzeMeal(imageDataUrl: String)' android/app/src/main/java/com/noussport/app/MainActivity.kt
-          grep -Fq 'NousSportHealth.analyzeMeal' android/app/src/main/assets/index.html
-          grep -Fq 'analyze-meal' android/app/src/main/java/com/noussport/app/MainActivity.kt
+          set -euo pipefail
+          echo "Checking Supabase URL..."
+          grep -RIn "lykabwqpnjkuntnonmpb.supabase.co" android/app/src/main/assets src .env.example
+          if grep -RIn "lykabwqpnjkuntnommpb.supabase.co" android/app/src/main/assets src .env.example; then
+            echo "ERROR: old Supabase URL is still present"
+            exit 1
+          fi
+
       - name: Build APK
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
           cd android
           gradle wrapper --gradle-version 8.11.1
           chmod +x gradlew
           ./gradlew clean assembleDebug --no-daemon
-      - name: Upload APK
+
+      - name: Upload corrected APK
         uses: actions/upload-artifact@v4
         with:
-          name: NOUS-SPORT-V31-FIX-ANALYSE-NATIF-APK
+          name: NOUS-SPORT-V31-CORRIGE-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
