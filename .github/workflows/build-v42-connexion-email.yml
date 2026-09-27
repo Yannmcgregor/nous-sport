@@ -1,0 +1,86 @@
+name: Build Nous Sport V42 CONNEXION EMAIL
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Find V42 ZIP
+        shell: bash
+        run: |
+          set -e
+          ZIP="$(find . -maxdepth 2 -type f -iname '*V42*CONNEXION*EMAIL*.zip' -print -quit)"
+          if [ -z "$ZIP" ]; then
+            ZIP="$(find . -maxdepth 2 -type f -iname '*V42*.zip' -print -quit)"
+          fi
+          if [ -z "$ZIP" ]; then
+            echo "Aucun ZIP V42 trouvé."
+            exit 1
+          fi
+          echo "ZIP trouvé : $ZIP"
+          echo "V42_ZIP=$ZIP" >> "$GITHUB_ENV"
+
+      - name: Extract V42 Android project
+        shell: bash
+        run: |
+          set -e
+          rm -rf v42-extracted
+          mkdir -p v42-extracted
+          unzip -q -o "$V42_ZIP" -d v42-extracted
+          ANDROID_DIR="$(find v42-extracted -type f -path '*/android/app/build.gradle' -print -quit | sed 's#/app/build.gradle##')"
+          if [ -z "$ANDROID_DIR" ]; then
+            echo "Projet Android V42 introuvable."
+            exit 1
+          fi
+          echo "ANDROID_DIR=$ANDROID_DIR" >> "$GITHUB_ENV"
+
+      - name: Verify V42 authentication
+        shell: bash
+        run: |
+          set -e
+          JS="$ANDROID_DIR/app/src/main/assets/src/main.js"
+          test -f "$JS"
+          grep -q "signUp({email,password})" "$JS"
+          grep -q "signInWithPassword({email,password})" "$JS"
+          grep -q "emailSuggestions" "$JS"
+          grep -q "nousSportRememberedEmails" "$JS"
+          grep -q "WATER_GOAL=2000" "$JS"
+          if grep -q "sendOtp\|verifyOtp\|otpCode\|resendOtp" "$JS"; then
+            echo "Ancien système OTP détecté dans le runtime Android."
+            exit 1
+          fi
+          echo "Authentification e-mail + mot de passe OK, sans OTP."
+
+      - name: Build APK
+        shell: bash
+        run: |
+          set -e
+          cd "$ANDROID_DIR"
+          if [ ! -f gradlew ]; then
+            gradle wrapper --gradle-version 8.11.1
+          fi
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nous-Sport-V42-APK
+          path: '**/build/outputs/apk/debug/*.apk'
+          if-no-files-found: error
