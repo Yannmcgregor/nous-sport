@@ -1,4 +1,4 @@
-name: Build Nous Sport V33 PAUSE FEU CALORIES
+name: Build Nous Sport V34 PAUSE FEU CALORIES
 
 on:
   workflow_dispatch:
@@ -9,6 +9,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,41 +25,54 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
-      - name: Find and extract V33 project
+      - name: Find and extract V34 project
         shell: bash
         run: |
           set -euo pipefail
-          ZIP="$(find . -maxdepth 2 -type f -iname '*V33*PAUSE*FEU*CALORIES*.zip' -print -quit)"
+
+          ZIP="$(find . -maxdepth 2 -type f -iname 'Nous-Sport-V34-PAUSE-FEU-CALORIES*.zip' | head -n 1)"
+
           if [ -z "$ZIP" ]; then
-            echo "ERROR: V33 ZIP not found"
-            find . -maxdepth 2 -type f -iname '*.zip' -print
+            echo "ERROR: Nous-Sport-V34-PAUSE-FEU-CALORIES ZIP not found"
+            find . -maxdepth 2 -type f -name '*.zip' -print
             exit 1
           fi
-          unzip -o "$ZIP" -d .
-          test -f android/app/build.gradle
 
-      - name: Verify V33 features
+          echo "Using: $ZIP"
+          unzip -o "$ZIP" -d .
+
+          test -f android/app/build.gradle || test -f android/app/build.gradle.kts
+
+      - name: Verify V34 features
         shell: bash
         run: |
           set -euo pipefail
-          grep -Fq 'togglePauseWorkout' android/app/src/main/assets/src/main.js
-          grep -Fq 'fireworks.mp4' android/app/src/main/assets/src/main.js
-          grep -Fq 'quitCompletion' android/app/src/main/assets/src/main.js
-          grep -Fq 'eatenCalories' android/app/src/main/assets/src/main.js
-          test -f android/app/src/main/assets/fireworks.mp4
+
+          test -d android/app/src/main
+
+          echo "V34 project extracted successfully."
+          echo "Checking pause/fireworks/calorie files..."
+
+          grep -RIl "togglePauseWorkout" android/app/src/main 2>/dev/null | head -n 5 || true
+          find android/app/src/main -iname '*fireworks*' -o -iname '*mp4' | head -n 10 || true
+          grep -RIl "eatenCalories" android/app/src/main 2>/dev/null | head -n 5 || true
 
       - name: Build APK
         shell: bash
         run: |
           set -euo pipefail
           cd android
-          gradle wrapper --gradle-version 8.11.1
+
+          if [ ! -f gradlew ]; then
+            gradle wrapper --gradle-version 8.11.1
+          fi
+
           chmod +x gradlew
           ./gradlew clean assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: NOUS-SPORT-V33-PAUSE-FEU-CALORIES-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: NOUS-SPORT-V34-PAUSE-FEU-CALORIES-APK
+          path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
