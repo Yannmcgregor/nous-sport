@@ -1,0 +1,73 @@
+name: Build Nous Sport V51
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Find V51 ZIP
+        shell: bash
+        run: |
+          set -e
+          ZIP="$(find . -maxdepth 2 -type f -iname '*V51*.zip' -print -quit)"
+          test -n "$ZIP"
+          echo "V51_ZIP=$ZIP" >> "$GITHUB_ENV"
+
+      - name: Extract V51 Android project
+        shell: bash
+        run: |
+          set -e
+          rm -rf v51-extracted
+          mkdir -p v51-extracted
+          unzip -q -o "$V51_ZIP" -d v51-extracted
+          ANDROID_DIR="$(find v51-extracted -type f -path '*/android/app/build.gradle' -print -quit | sed 's#/app/build.gradle##')"
+          test -n "$ANDROID_DIR"
+          echo "ANDROID_DIR=$ANDROID_DIR" >> "$GITHUB_ENV"
+
+      - name: Verify V51
+        shell: bash
+        run: |
+          set -e
+          INDEX="$ANDROID_DIR/app/src/main/assets/src/main.js"
+          GRADLE="$ANDROID_DIR/app/build.gradle"
+          grep -Fq 'NOUS SPORT V51: verified Health Connect integer fields' "$INDEX"
+          grep -Fq 'active_calories:Math.round(Number(data.active_calories||0))' "$INDEX"
+          grep -Fq 'avg_heart_rate:data.avg_heart_rate==null?null:Math.round(Number(data.avg_heart_rate))' "$INDEX"
+          grep -Fq 'versionCode 92' "$GRADLE"
+          grep -Fq "versionName '0.9.15'" "$GRADLE"
+          echo "V51 vérifiée."
+
+      - name: Build APK
+        shell: bash
+        run: |
+          set -e
+          cd "$ANDROID_DIR"
+          if [ ! -f gradlew ]; then
+            gradle wrapper --gradle-version 8.11.1
+          fi
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nous-Sport-V51-APK
+          path: '**/build/outputs/apk/debug/*.apk'
+          if-no-files-found: error
