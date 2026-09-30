@@ -1,0 +1,87 @@
+name: Build Nous Sport V49
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Find V49 ZIP
+        shell: bash
+        run: |
+          set -e
+          ZIP="$(find . -type f -iname '*V49*.zip' -print -quit)"
+          if [ -z "$ZIP" ]; then
+            echo "Aucun ZIP V49 trouvé."
+            exit 1
+          fi
+          echo "V49 ZIP : $ZIP"
+          echo "V49_ZIP=$ZIP" >> "$GITHUB_ENV"
+
+      - name: Extract V49 Android project
+        shell: bash
+        run: |
+          set -e
+          rm -rf v49-extracted
+          mkdir -p v49-extracted
+          unzip -q -o "$V49_ZIP" -d v49-extracted
+          ANDROID_DIR="$(find v49-extracted -type f -path '*/android/app/build.gradle' -print -quit | sed 's#/app/build.gradle##')"
+          if [ -z "$ANDROID_DIR" ]; then
+            echo "Projet Android V49 introuvable."
+            find v49-extracted -maxdepth 5 -type f | head -100
+            exit 1
+          fi
+          echo "ANDROID_DIR=$ANDROID_DIR" >> "$GITHUB_ENV"
+          echo "Projet Android : $ANDROID_DIR"
+
+      - name: Verify V49
+        shell: bash
+        run: |
+          set -e
+          INDEX="$ANDROID_DIR/app/src/main/assets/src/main.js"
+          GRADLE="$ANDROID_DIR/app/build.gradle"
+
+          test -f "$INDEX" || { echo "INDEX introuvable: $INDEX"; exit 1; }
+          test -f "$GRADLE" || { echo "GRADLE introuvable: $GRADLE"; exit 1; }
+
+          grep -Fq 'active_calories:Math.round(Number(data.active_calories||0))' "$INDEX"             || { echo "Correction calories V49 absente."; grep -n 'active_calories' "$INDEX" | head -5; exit 1; }
+
+          grep -Eq 'versionCode[[:space:]]+90' "$GRADLE"             || { echo "versionCode 90 absent."; grep -n 'versionCode' "$GRADLE"; exit 1; }
+
+          grep -Fq "versionName '0.9.13'" "$GRADLE"             || { echo "versionName 0.9.13 absent."; grep -n 'versionName' "$GRADLE"; exit 1; }
+
+          echo "V49 vérifiée."
+
+      - name: Build APK
+        shell: bash
+        run: |
+          set -e
+          cd "$ANDROID_DIR"
+          if [ ! -f gradlew ]; then
+            gradle wrapper --gradle-version 8.11.1
+          fi
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nous-Sport-V49-APK
+          path: '**/build/outputs/apk/debug/*.apk'
+          if-no-files-found: error
