@@ -1,0 +1,78 @@
+name: Build Nous Sport V53
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Find V53 ZIP
+        shell: bash
+        run: |
+          set -e
+          ZIP="$(find . -maxdepth 2 -type f -iname '*V53*.zip' -print -quit)"
+          test -n "$ZIP"
+          echo "V53_ZIP=$ZIP" >> "$GITHUB_ENV"
+
+      - name: Extract V53 Android project
+        shell: bash
+        run: |
+          set -e
+          rm -rf v53-extracted
+          mkdir -p v53-extracted
+          unzip -q -o "$V53_ZIP" -d v53-extracted
+          ANDROID_DIR="$(find v53-extracted -type f -path '*/android/app/build.gradle' -print -quit | sed 's#/app/build.gradle##')"
+          test -n "$ANDROID_DIR"
+          echo "ANDROID_DIR=$ANDROID_DIR" >> "$GITHUB_ENV"
+
+      - name: Verify V53
+        shell: bash
+        run: |
+          set -e
+          KT="$ANDROID_DIR/app/src/main/java/com/noussport/app/MainActivity.kt"
+          INDEX="$ANDROID_DIR/app/src/main/assets/index.html"
+          JS="$ANDROID_DIR/app/src/main/assets/src/main.js"
+          GRADLE="$ANDROID_DIR/app/build.gradle"
+
+          grep -Fq 'NOUS SPORT V53: read steps specifically from Samsung Health' "$KT"
+          grep -Fq 'import androidx.health.connect.client.records.metadata.DataOrigin' "$KT"
+          grep -Fq 'dataOriginFilter = setOf(DataOrigin("com.sec.android.app.shealth"))' "$KT"
+          grep -Fq 'active_calories:Math.round(Number(data.active_calories||0)),avg_heart_rate:data.avg_heart_rate==null?null:Math.round(Number(data.avg_heart_rate))' "$INDEX"
+          grep -Fq 'active_calories:Math.round(Number(data.active_calories||0)),avg_heart_rate:data.avg_heart_rate==null?null:Math.round(Number(data.avg_heart_rate))' "$JS"
+          grep -Fq 'versionCode 94' "$GRADLE"
+          grep -Fq "versionName '0.9.17'" "$GRADLE"
+          echo "V53 vérifiée: lecture des pas filtrée sur Samsung Health."
+
+      - name: Build APK
+        shell: bash
+        run: |
+          set -e
+          cd "$ANDROID_DIR"
+          if [ ! -f gradlew ]; then
+            gradle wrapper --gradle-version 8.11.1
+          fi
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Nous-Sport-V53-APK
+          path: '**/build/outputs/apk/debug/*.apk'
+          if-no-files-found: error
