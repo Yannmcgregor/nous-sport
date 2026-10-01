@@ -1,0 +1,96 @@
+name: Build Nous Sport V64
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle 8.11.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Prepare V64
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f V64.zip
+          rm -rf v64-extracted
+          mkdir -p v64-extracted
+          unzip -q -o V64.zip -d v64-extracted
+          test -f v64-extracted/android/app/build.gradle
+          test -f v64-extracted/android/app/src/main/assets/index.html
+          test -f v64-extracted/android/app/src/main/assets/src/main.js
+          echo "ANDROID_DIR=$GITHUB_WORKSPACE/v64-extracted/android" >> "$GITHUB_ENV"
+          echo "V64 ZIP OK"
+
+      - name: Verify V64 calorie and meal logic
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'const adjustedTarget=baseTarget+burned' "$ANDROID_DIR/app/src/main/assets/index.html"
+          grep -Fq 'const deficit=Math.round(adjustedTarget-eaten)' "$ANDROID_DIR/app/src/main/assets/index.html"
+          grep -Fq "const warning=deficit<500" "$ANDROID_DIR/app/src/main/assets/index.html"
+          grep -Fq 'id="calWarning"' "$ANDROID_DIR/app/src/main/assets/index.html"
+          grep -Fq "const minimalPayload=" "$ANDROID_DIR/app/src/main/assets/index.html"
+          grep -Fq "await supabase.from('meals').insert(minimalPayload)" "$ANDROID_DIR/app/src/main/assets/index.html"
+          grep -Fq "await load();" "$ANDROID_DIR/app/src/main/assets/index.html"
+          grep -Fq 'versionCode 103' "$ANDROID_DIR/app/build.gradle"
+          echo "V64 calorie/meal logic verified."
+
+      - name: Verify JavaScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, subprocess
+          html = Path("v64-extracted/android/app/src/main/assets/index.html").read_text(encoding="utf-8")
+          scripts = re.findall(r"<script(?:[^>]*)>(.*?)</script>", html, flags=re.S | re.I)
+          if not scripts:
+              raise SystemExit("ERROR: no inline JavaScript")
+          Path("/tmp/noussport-inline.js").write_text(scripts[0], encoding="utf-8")
+          subprocess.run(["node", "--check", "/tmp/noussport-inline.js"], check=True)
+          subprocess.run(["node", "--check", "v64-extracted/android/app/src/main/assets/src/main.js"], check=True)
+          print("JavaScript V64: OK")
+          PY
+
+      - name: Build V64 APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$ANDROID_DIR"
+          gradle clean assembleDebug --no-daemon --stacktrace
+
+      - name: Copy APK as V64.apk
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find "$ANDROID_DIR/app/build/outputs/apk/debug" -type f -name '*.apk' -print -quit)"
+          test -n "$APK"
+          cp "$APK" "$GITHUB_WORKSPACE/V64.apk"
+          test -s "$GITHUB_WORKSPACE/V64.apk"
+
+      - name: Upload V64 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: V64
+          path: V64.apk
+          if-no-files-found: error
