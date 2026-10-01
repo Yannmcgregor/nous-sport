@@ -21,13 +21,11 @@ jobs:
         shell: bash
         run: |
           set -e
-          ZIP=$(find . -maxdepth 2 -type f -iname 'V57*.zip' | head -n 1)
-
+          ZIP="$(find . -maxdepth 3 -type f -iname 'V57*.zip' | head -n 1)"
           if [ -z "$ZIP" ]; then
-            echo "ERREUR : V57.zip introuvable"
+            echo "ERREUR : aucun ZIP V57 trouvé"
             exit 1
           fi
-
           echo "ZIP trouvé : $ZIP"
           echo "ZIP_PATH=$ZIP" >> "$GITHUB_ENV"
 
@@ -35,42 +33,66 @@ jobs:
         shell: bash
         run: |
           set -e
-          rm -rf project
-          mkdir project
-          unzip -q "$ZIP_PATH" -d project
+          rm -rf v57-extracted
+          mkdir -p v57-extracted
+          unzip -q "$ZIP_PATH" -d v57-extracted
 
-          echo "Contenu extrait :"
-          find project -maxdepth 3 -type f | head -100
+          echo "Recherche du projet Android..."
+          find v57-extracted -type f \( -name 'settings.gradle' -o -name 'settings.gradle.kts' -o -name 'build.gradle' -o -name 'build.gradle.kts' \) -print
 
-      - name: Find Gradle project
+      - name: Find Android Gradle project
         shell: bash
         run: |
           set -e
 
-          GRADLEW=$(find project -type f -name gradlew | head -n 1)
+          SETTINGS="$(find v57-extracted -type f \( -name 'settings.gradle' -o -name 'settings.gradle.kts' \) | head -n 1)"
+          BUILD="$(find v57-extracted -type f \( -name 'build.gradle' -o -name 'build.gradle.kts' \) | head -n 1)"
+          GRADLEW="$(find v57-extracted -type f -name 'gradlew' | head -n 1)"
 
-          if [ -z "$GRADLEW" ]; then
-            echo "ERREUR : gradlew introuvable dans V57"
+          if [ -n "$SETTINGS" ]; then
+            PROJECT_DIR="$(dirname "$SETTINGS")"
+          elif [ -n "$BUILD" ]; then
+            PROJECT_DIR="$(dirname "$BUILD")"
+          elif [ -n "$GRADLEW" ]; then
+            PROJECT_DIR="$(dirname "$GRADLEW")"
+          else
+            echo "ERREUR : aucun projet Gradle Android trouvé dans V57"
+            echo "Contenu du ZIP :"
+            find v57-extracted -maxdepth 4 -type f | head -200
             exit 1
           fi
 
-          APP_DIR=$(dirname "$GRADLEW")
+          echo "Projet Gradle : $PROJECT_DIR"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-          echo "Gradle trouvé : $GRADLEW"
-          echo "APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
+      - name: Prepare Gradle
+        shell: bash
+        run: |
+          set -e
+          cd "$PROJECT_DIR"
+
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+            echo "GRADLE_CMD=./gradlew" >> "$GITHUB_ENV"
+          else
+            echo "gradlew absent : installation de Gradle 8.7"
+            cd "$GITHUB_WORKSPACE"
+            wget -q https://services.gradle.org/distributions/gradle-8.7-bin.zip
+            unzip -q gradle-8.7-bin.zip -d "$GITHUB_WORKSPACE/gradle-dist"
+            echo "GRADLE_CMD=$GITHUB_WORKSPACE/gradle-dist/gradle-8.7/bin/gradle" >> "$GITHUB_ENV"
+          fi
 
       - name: Build APK
         shell: bash
         run: |
           set -e
-          cd "$APP_DIR"
-          chmod +x ./gradlew
-          ./gradlew assembleDebug --stacktrace
+          cd "$PROJECT_DIR"
+          "$GRADLE_CMD" assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: V57
           path: |
-            project/**/build/outputs/apk/**/*.apk
+            v57-extracted/**/build/outputs/apk/**/*.apk
           if-no-files-found: error
