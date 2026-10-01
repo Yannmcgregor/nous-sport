@@ -1,0 +1,74 @@
+name: Build Nous Sport V58
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle 8.11.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Prepare V58
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -f V58.zip
+          rm -rf v58-extracted
+          mkdir -p v58-extracted
+          unzip -q -o V58.zip -d v58-extracted
+
+          test -f v58-extracted/android/settings.gradle
+          test -f v58-extracted/android/build.gradle
+          test -f v58-extracted/android/app/build.gradle
+          test -f v58-extracted/android/app/src/main/AndroidManifest.xml
+          test -f v58-extracted/android/app/src/main/java/com/noussport/app/MainActivity.kt
+          test -f v58-extracted/android/app/src/main/assets/index.html
+
+          echo "ANDROID_DIR=$GITHUB_WORKSPACE/v58-extracted/android" >> "$GITHUB_ENV"
+          echo "V58 ZIP OK"
+          echo "Android project OK"
+
+      - name: Build V58 APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$ANDROID_DIR"
+          gradle clean assembleDebug --no-daemon --stacktrace
+
+      - name: Copy APK as V58.apk
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find "$ANDROID_DIR/app/build/outputs/apk/debug" -type f -name '*.apk' -print -quit)"
+          test -n "$APK"
+          cp "$APK" "$GITHUB_WORKSPACE/V58.apk"
+          test -s "$GITHUB_WORKSPACE/V58.apk"
+          ls -lh "$GITHUB_WORKSPACE/V58.apk"
+
+      - name: Upload V58 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: V58
+          path: V58.apk
+          if-no-files-found: error
