@@ -1,0 +1,73 @@
+name: Build V70
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle 8.11.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Prepare V70
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$(find . -maxdepth 5 -type f -name 'V70.zip' -print -quit || true)"
+          if [ -z "$archive" ]; then echo "V70.zip not found"; exit 1; fi
+          rm -rf .v70_extract
+          mkdir -p .v70_extract
+          unzip -q "$archive" -d .v70_extract
+          if [ -d .v70_extract/android ]; then rm -rf android; cp -a .v70_extract/android ./android; else echo "android folder missing in V70.zip"; exit 1; fi
+          test -f android/app/src/main/assets/index.html
+          test -f android/app/src/main/assets/src/main.js
+
+      - name: Verify V70 calorie logic
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'Number(maintenanceCalories||targetCalories||0)' android/app/src/main/assets/index.html
+          grep -Fq 'Number(maintenanceCalories||targetCalories||0)' android/app/src/main/assets/src/main.js
+          grep -Fq 'const adjustedTarget=baseTarget+burned;' android/app/src/main/assets/index.html
+          grep -Fq 'const warning=remaining<500;' android/app/src/main/assets/index.html
+          echo 'V70 OK: maintenance/base + burned - eaten; warning below 500 remaining'
+
+      - name: Verify JavaScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check android/app/src/main/assets/src/main.js
+
+      - name: Build V70 APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x android/gradlew 2>/dev/null || true
+          cd android
+          if [ -x ./gradlew ]; then ./gradlew assembleDebug --no-daemon; else gradle assembleDebug --no-daemon; fi
+
+      - name: Copy APK as V70.apk
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$(find android/app/build/outputs/apk -type f -name '*.apk' | head -n 1)"
+          test -n "$apk"
+          cp "$apk" V70.apk
+
+      - name: Upload V70 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: V70-apk
+          path: V70.apk
