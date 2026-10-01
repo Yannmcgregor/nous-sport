@@ -87,6 +87,18 @@ jobs:
         run: |
           set -e
           cd "$PROJECT_DIR"
+
+          echo "===== CONTENU DE android/app/build.gradle ====="
+          if [ -f "android/app/build.gradle" ]; then
+            sed -n '1,120p' android/app/build.gradle
+          elif [ -f "app/build.gradle" ]; then
+            sed -n '1,120p' app/build.gradle
+          else
+            echo "build.gradle introuvable dans le projet sélectionné"
+            find . -maxdepth 4 -type f \( -name 'build.gradle' -o -name 'build.gradle.kts' \) -print
+          fi
+          echo "===== FIN build.gradle ====="
+
           "$GRADLE_CMD" assembleDebug --stacktrace
 
       - name: Upload APK
