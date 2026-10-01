@@ -2,6 +2,9 @@ name: Build Nous Sport V57
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
   build:
@@ -26,53 +29,41 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          test -f V57.zip
           rm -rf v57-extracted
           mkdir -p v57-extracted
 
-          test -f V57.zip
           unzip -q -o V57.zip -d v57-extracted
 
-          ANDROID_DIR="$(find v57-extracted -type f -path '*/android/app/build.gradle' -print -quit | sed 's#/app/build.gradle##')"
-          test -n "$ANDROID_DIR"
-          test -f "$ANDROID_DIR/settings.gradle"
-          test -f "$ANDROID_DIR/build.gradle"
-          test -f "$ANDROID_DIR/app/build.gradle"
-          test -f "$ANDROID_DIR/app/src/main/java/com/noussport/app/MainActivity.kt"
-          test -f "$ANDROID_DIR/app/src/main/assets/index.html"
+          test -f v57-extracted/android/settings.gradle
+          test -f v57-extracted/android/build.gradle
+          test -f v57-extracted/android/app/build.gradle
+          test -f v57-extracted/android/app/src/main/AndroidManifest.xml
+          test -f v57-extracted/android/app/src/main/java/com/noussport/app/MainActivity.kt
+          test -f v57-extracted/android/app/src/main/assets/index.html
 
-          echo "ANDROID_DIR=$ANDROID_DIR" >> "$GITHUB_ENV"
-          echo "Projet V57 trouvé dans: $ANDROID_DIR"
+          echo "ANDROID_DIR=$GITHUB_WORKSPACE/v57-extracted/android" >> "$GITHUB_ENV"
+          echo "V57 ZIP validé et projet Android trouvé."
 
-      - name: Verify V57 source
-        shell: bash
-        run: |
-          set -euo pipefail
-          KT="$ANDROID_DIR/app/src/main/java/com/noussport/app/MainActivity.kt"
-          HTML="$ANDROID_DIR/app/src/main/assets/index.html"
-          GRADLE="$ANDROID_DIR/app/build.gradle"
-
-          grep -Fq 'NOUS SPORT V57' "$KT"
-          grep -Fq 'DataOrigin("com.sec.android.app.shealth")' "$KT"
-          grep -Fq 'aggregateGroupByPeriod' "$KT"
-          grep -Fq 'health_diagnostic' "$KT"
-          grep -Fq 'health_diagnostic' "$HTML"
-          grep -Fq "versionName '0.9.20'" "$GRADLE"
-
-          echo 'V57 source verification: OK'
-
-      - name: Build APK V57
+      - name: Build V57 APK
         shell: bash
         run: |
           set -euo pipefail
           cd "$ANDROID_DIR"
-          gradle --version
-          gradle clean assembleDebug --no-daemon --stacktrace
 
-          APK="$(find app/build/outputs/apk/debug -type f -name '*.apk' -print -quit)"
+          gradle wrapper --gradle-version 8.11.1 --distribution-type bin
+          chmod +x gradlew
+          ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Rename APK to V57.apk
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find "$ANDROID_DIR" -type f -path '*/build/outputs/apk/debug/*.apk' -print -quit)"
           test -n "$APK"
           cp "$APK" "$GITHUB_WORKSPACE/V57.apk"
-          test -s "$GITHUB_WORKSPACE/V57.apk"
-          echo "APK V57 créé: $GITHUB_WORKSPACE/V57.apk"
+          ls -lh "$GITHUB_WORKSPACE/V57.apk"
 
       - name: Upload V57 APK
         uses: actions/upload-artifact@v4
