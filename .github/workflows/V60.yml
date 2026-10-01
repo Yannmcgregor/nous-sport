@@ -1,0 +1,96 @@
+name: Build Nous Sport V60
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle 8.11.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Find V60 ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP="$(find . -type f -name 'V60.zip' -print -quit)"
+          if [ -z "$ZIP" ]; then
+            echo "ERREUR: V60.zip introuvable dans le dépôt."
+            exit 1
+          fi
+          echo "ZIP=$ZIP" >> "$GITHUB_ENV"
+
+      - name: Extract V60 Android project
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf v60-extracted
+          mkdir -p v60-extracted
+          unzip -q "$ZIP" -d v60-extracted
+          test -f v60-extracted/android/app/build.gradle
+          test -f v60-extracted/android/app/src/main/assets/index.html
+          test -f v60-extracted/android/app/src/main/java/com/noussport/app/MainActivity.kt
+
+      - name: Verify JavaScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import subprocess
+
+          html = Path("v60-extracted/android/app/src/main/assets/index.html").read_text(encoding="utf-8")
+          scripts = re.findall(r"<script(?:[^>]*)>(.*?)</script>", html, flags=re.S | re.I)
+          if not scripts:
+              raise SystemExit("ERREUR: aucun bloc JavaScript dans index.html")
+          Path("/tmp/noussport-inline.js").write_text(scripts[0], encoding="utf-8")
+          subprocess.run(["node", "--check", "/tmp/noussport-inline.js"], check=True)
+          subprocess.run([
+              "node", "--check",
+              "v60-extracted/android/app/src/main/assets/src/main.js"
+          ], check=True)
+          print("JavaScript V60: OK")
+          PY
+
+      - name: Verify V60 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'samsungRawSum' v60-extracted/android/app/src/main/java/com/noussport/app/MainActivity.kt
+          grep -q 'versionCode 99' v60-extracted/android/app/build.gradle
+          echo "Correction Samsung Health V60 présente."
+
+      - name: Build V60 APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle -p v60-extracted/android --no-daemon assembleDebug
+          cp v60-extracted/android/app/build/outputs/apk/debug/app-debug.apk V60.apk
+          test -s V60.apk
+
+      - name: Upload V60 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: V60
+          path: V60.apk
+          if-no-files-found: error
