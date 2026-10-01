@@ -1,0 +1,105 @@
+name: Build Nous Sport V66
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle 8.11.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Prepare V66
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP="$(find "$GITHUB_WORKSPACE" -type f -name 'V66.zip' -print -quit)"
+          if [ -z "$ZIP" ]; then
+            echo "ERROR: V66.zip introuvable dans le dépôt."
+            find "$GITHUB_WORKSPACE" -type f -name '*.zip' -print
+            exit 1
+          fi
+          rm -rf v66-extracted
+          mkdir -p v66-extracted
+          unzip -q -o "$ZIP" -d v66-extracted
+          test -f v66-extracted/android/app/build.gradle
+          test -f v66-extracted/android/app/src/main/assets/index.html
+          test -f v66-extracted/android/app/src/main/assets/src/main.js
+          echo "ANDROID_DIR=$GITHUB_WORKSPACE/v66-extracted/android" >> "$GITHUB_ENV"
+          echo "V66 ZIP OK: $ZIP"
+
+      - name: Verify V66 calorie and meal logic
+        shell: bash
+        run: |
+          set -euo pipefail
+          HTML="$ANDROID_DIR/app/src/main/assets/index.html"
+          grep -Fq 'const adjustedTarget=baseTarget+burned;' "$HTML"
+          grep -Fq 'const remaining=Math.max(0,adjustedTarget-eaten);' "$HTML"
+          grep -Fq 'const warning=deficit<500;' "$HTML"
+          grep -Fq 'id="calWarning"' "$HTML"
+          grep -Fq 'function showMealToast' "$HTML"
+          grep -Fq 'kcal ajoutées à ta journée' "$HTML"
+          grep -Fq 'const minimalPayload=' "$HTML"
+          grep -Fq "await supabase.from('meals').insert(minimalPayload)" "$HTML"
+          grep -Fq 'versionCode 105' "$ANDROID_DIR/app/build.gradle"
+          grep -Fq 'versionName "66"' "$ANDROID_DIR/app/build.gradle"
+          echo "V66 calorie/meal logic verified."
+
+      - name: Verify JavaScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import subprocess
+          html = Path("v66-extracted/android/app/src/main/assets/index.html").read_text(encoding="utf-8")
+          scripts = re.findall(r"<script(?:[^>]*)>(.*?)</script>", html, flags=re.S | re.I)
+          if not scripts:
+              raise SystemExit("ERROR: no inline JavaScript")
+          Path("/tmp/noussport-inline.js").write_text(scripts[0], encoding="utf-8")
+          subprocess.run(["node", "--check", "/tmp/noussport-inline.js"], check=True)
+          subprocess.run(["node", "--check", "v66-extracted/android/app/src/main/assets/src/main.js"], check=True)
+          print("JavaScript V66: OK")
+          PY
+
+      - name: Build V66 APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$ANDROID_DIR"
+          gradle clean assembleDebug --no-daemon --stacktrace
+
+      - name: Copy APK as V66.apk
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find "$ANDROID_DIR/app/build/outputs/apk/debug" -type f -name '*.apk' -print -quit)"
+          test -n "$APK"
+          cp "$APK" "$GITHUB_WORKSPACE/V66.apk"
+          test -s "$GITHUB_WORKSPACE/V66.apk"
+
+      - name: Upload V66 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: V66
+          path: V66.apk
+          if-no-files-found: error
