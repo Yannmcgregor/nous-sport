@@ -1,0 +1,98 @@
+name: Build Nous Sport V65
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle 8.11.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Prepare V65
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f V65.zip
+          rm -rf v65-extracted
+          mkdir -p v65-extracted
+          unzip -q -o V65.zip -d v65-extracted
+          test -f v65-extracted/android/app/build.gradle
+          test -f v65-extracted/android/app/src/main/assets/index.html
+          test -f v65-extracted/android/app/src/main/assets/src/main.js
+          echo "ANDROID_DIR=$GITHUB_WORKSPACE/v65-extracted/android" >> "$GITHUB_ENV"
+          echo "V65 ZIP OK"
+
+      - name: Verify V65 calorie and meal logic
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'const adjustedTarget=baseTarget+(burned*2)' "$ANDROID_DIR/app/src/main/assets/index.html"
+          grep -Fq 'const remaining=Math.max(0,adjustedTarget-eaten)' "$ANDROID_DIR/app/src/main/assets/index.html"
+          grep -Fq 'const warning=deficit<500' "$ANDROID_DIR/app/src/main/assets/index.html"
+          grep -Fq 'id="calWarning"' "$ANDROID_DIR/app/src/main/assets/index.html"
+          grep -Fq 'function showMealToast' "$ANDROID_DIR/app/src/main/assets/index.html"
+          grep -Fq 'kcal ajoutées à ta journée' "$ANDROID_DIR/app/src/main/assets/index.html"
+          grep -Fq 'const minimalPayload=' "$ANDROID_DIR/app/src/main/assets/index.html"
+          grep -Fq "await supabase.from('meals').insert(minimalPayload)" "$ANDROID_DIR/app/src/main/assets/index.html"
+          grep -Fq 'versionCode 104' "$ANDROID_DIR/app/build.gradle"
+          grep -Fq 'versionName "65"' "$ANDROID_DIR/app/build.gradle"
+          echo "V65 calorie/meal logic verified."
+
+      - name: Verify JavaScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, subprocess
+          html = Path("v65-extracted/android/app/src/main/assets/index.html").read_text(encoding="utf-8")
+          scripts = re.findall(r"<script(?:[^>]*)>(.*?)</script>", html, flags=re.S | re.I)
+          if not scripts:
+              raise SystemExit("ERROR: no inline JavaScript")
+          Path("/tmp/noussport-inline.js").write_text(scripts[0], encoding="utf-8")
+          subprocess.run(["node", "--check", "/tmp/noussport-inline.js"], check=True)
+          subprocess.run(["node", "--check", "v65-extracted/android/app/src/main/assets/src/main.js"], check=True)
+          print("JavaScript V65: OK")
+          PY
+
+      - name: Build V65 APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$ANDROID_DIR"
+          gradle clean assembleDebug --no-daemon --stacktrace
+
+      - name: Copy APK as V65.apk
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find "$ANDROID_DIR/app/build/outputs/apk/debug" -type f -name '*.apk' -print -quit)"
+          test -n "$APK"
+          cp "$APK" "$GITHUB_WORKSPACE/V65.apk"
+          test -s "$GITHUB_WORKSPACE/V65.apk"
+
+      - name: Upload V65 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: V65
+          path: V65.apk
+          if-no-files-found: error
